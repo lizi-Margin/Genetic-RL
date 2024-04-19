@@ -3,17 +3,23 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import numpy as np
 from creature import FlyingCreature
+from train_buffer import ReplayBuffer
 
 class World:
-    def __init__(self, num_creatures):
+    def __init__(self, num_creatures,num_creatures_rand = 0,agent_size012=2):
         self.num_creatures = num_creatures
         self.creatures  = []
         self.player_creature = None
+
+        buff = ReplayBuffer(int(1e4))
         i = 0
         for _ in range(num_creatures):
-            self.creatures.append(FlyingCreature(i))
+            self.creatures.append(FlyingCreature(i,agent_size012=agent_size012,train_buffer= buff))
             i +=1
-        
+        self.num_creatures += num_creatures_rand
+        for _ in range(num_creatures_rand):
+            self.creatures.append(FlyingCreature(i,agent_size012=0))
+            i +=1       
         self.w = 800
         self.h = 800
         
@@ -24,13 +30,22 @@ class World:
     def update(self,train=True):
         self.total_reward_list[self.step%self.total_reward_list_capacity] = 0
         for creature in self.creatures:
-            c_reward= creature.step(self,train = train)
+            c_reward= creature.update(self,train = train)
             self.total_reward_list[self.step%self.total_reward_list_capacity] += c_reward
             self.lock_position(creature)
-    
-    def update_player(self,wasd):
-        player_reward = self.player_creature.step_in_control(self,wasd)
-        self.lock_position(self.player_creature)
+
+    def update_player(self,wasd):        
+        player_reward = self.player_creature.update_in_control(self,wasd)
+        
+    def action(self):
+        for creature in self.creatures:
+            creature.take_action()
+            self.lock_position(creature)
+        if self.player_creature!= None:
+            self.player_creature.take_action()
+            self.lock_position(self.player_creature)
+
+
     
     def lock_position(self,c):
         creature = c
@@ -48,7 +63,7 @@ class World:
     def execute(self,player):
         self.player_creature= player 
 
-    def run(self,train=False):
+    def run(self,train=False,plot = False):
         
         self.step = -1
         pygame.init()
@@ -83,15 +98,21 @@ class World:
             self.update(train=train)
             if self.player_creature != None :self.update_player(wasd)
 
+            self.action()
+
             self.render(screen)            
 
             clock.tick(30)
 
             #if (self.step % 10 == 0): print(self.step)
+            if (plot and self.step % 50 == 0):
+                print(self.step ,' -- ' , self.total_reward_list[self.step%self.total_reward_list_capacity])
+                print('   ',self.creatures[0].agent.last_q_table )
             if (self.step >0 and self.step % 1000 == 0):
                 self.save_all('./AUTOSAVE-GAME-MODE')
-                plt.plot(x,self.total_reward_list) 
-                plt.show()
+                if plot:
+                    plt.plot(x,self.total_reward_list) 
+                    plt.show()
 
 
         pygame.quit()
@@ -112,6 +133,10 @@ class World:
         while running and self.step<totol_step :
             self.step+=1
             self.update()
+            self.action()
+            if (self.step % 10 == 0):
+                print(self.step ,' -- ' , self.total_reward_list[self.step%self.total_reward_list_capacity])
+                print('   ',self.creatures[0].agent.last_q_table )
             if (self.step >0 and self.step % 1000 == 0):
 
                 self.save_all('./AUTOSAVE')
@@ -126,9 +151,14 @@ class World:
         for creature in self.creatures:
             creature.save_json(ad)
         print('save sccess')
-    def load_all(self,ad):
-        for creature in self.creatures:
-            creature.open_json(ad)
+    def load_all(self,ad,to_id = None):
+        if id != None : 
+            for creature in self.creatures:
+                creature.open_json(ad,id = np.random.randint(0,to_id) )
+ 
+        else : 
+            for creature in self.creatures:
+                creature.open_json(ad)
     
         print('load sccess')
     

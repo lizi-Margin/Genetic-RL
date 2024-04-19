@@ -1,6 +1,8 @@
 import numpy as np
 import math as m
 from agent import QTAgent
+from agent import DQNAgent
+from agent import RandAgent
 from utils import Vector3
 from utils import Vector2
 import json
@@ -8,7 +10,7 @@ import json
 # w东 h南 地    前 左 上
 
 class FlyingCreature:
-    def __init__(self,id, map_size = 800):
+    def __init__(self,id,agent_size012 = 1,map_size = 800,train_buffer = None):
         self.id = id
         self.default_idle_v = 1.5
         self.default_thrust_v = 3.5
@@ -23,29 +25,36 @@ class FlyingCreature:
         self.velocity = (np.random.rand(2)-0.5) 
         self.velocity = (self.velocity/np.linalg.norm(self.velocity))  * self.default_idle_v
 
-        self.agent = QTAgent(state_num=4,action_num=4)
+        if agent_size012 == 0:
+            self.agent = RandAgent(4) 
+        elif agent_size012 == 2 : self.agent = DQNAgent(2,4,train_buffer=train_buffer)
+        else :self.agent = QTAgent(4,4)
+        
         self.in_vission = []
         self.in_aim_range = []
 
-    def step(self,env,train=True):
+        self.this_action = None
+    
+    def set_agent(self,agent):
+        if agent != None : self.agent = agent
+
+    def update(self,env,train=True):
         self.syc_in_range(env)
-        state_ind = self.get_state_index(self.get_state())   
+        state = self.get_state()
+        state_ind = self.get_state_index(state)   
         reward = self.get_reward()
 
-        # action decision first -> Sara(real Atp1)    or   update first -> q-learning(asuming a somehow fake Atp1)
-        # action decision
-        action_index =self.agent.choose_action(state_ind )     
-        action = self.get_action_from_index(action_index)
-        # update
-        if(train):self.agent.update(state_ind,action_index,reward)
-        
+        if self.agent.size==2 :action_index =  self.agent.step(state,reward,train= train)
+        elif self.agent.size == 1:action_index =  self.agent.step(state_ind,reward,train= train)
+        else:action_index =  self.agent.step(state_ind,reward,train= train)
 
-        self.take_action(action)
-        
-        
+        self.this_action = self.get_action_from_index(action_index)
+
+        if self.agent.size == 0 : reward = 0 
         return reward
+    
 
-    def step_in_control(self,env,wasd):
+    def update_in_control(self,env,wasd):
         self.size = 20
         self.mobility = 2
         
@@ -57,8 +66,7 @@ class FlyingCreature:
         if wasd[0] : action_index =1
         elif wasd[1]:action_index = 2
         elif wasd[3]:action_index = 3
-        action = self.get_action_from_index(action_index)
-        self.take_action(action,is_player = True)
+        self.this_action = self.get_action_from_index(action_index)
         return reward
         
 
@@ -83,6 +91,34 @@ class FlyingCreature:
             left_wing = my_v.get_Vector3().rotate_xyz_fix(0,0,m.pi/2)
             on_left = left_wing.get_prod(to_c)>0
             return ang ,on_left
+    def get_velocity_angle_l(self,ndarr):
+            v = ((ndarr ).tolist())
+            v = Vector2(v).get_Vector3()
+            my_v = Vector2(self.velocity.tolist()).get_Vector3()
+            ang = my_v.get_angle(v)            
+            left_wing = my_v.rotate_xyz_fix(0,0,m.pi/2)
+            on_left = left_wing.get_prod(v)>0
+            return ang ,on_left
+       
+    def get_self_xyz(self,to_c):
+        to_c = Vector2(to_c)
+        to_c = to_c.get_Vector3()
+        v = Vector2(self.velocity.tolist()).get_Vector3()
+        ang,on_left = self.get_velocity_angle_l( np.array([1,0,0]))
+        if not on_left : ang = -ang
+        to_c.rev_rotate_zyx_self(m.pi,0,-ang)         
+        to_c = to_c.get_Vector2()
+        return to_c.get_list()
+
+    def get_fix_xyz(self,to_c):
+        to_c = Vector2(to_c)
+        to_c = to_c.get_Vector3()
+        v = Vector2(self.velocity.tolist()).get_Vector3()
+        ang = v.get_angle(Vector3([1,0,0]))
+        to_c.rotate_zyx_self(m.pi,0,ang) 
+        to_c = to_c.get_Vector2()
+        return to_c.get_list()
+
 
     def get_reward(self):
         reward = 0
@@ -92,22 +128,37 @@ class FlyingCreature:
             reward += 7
         return reward
     def get_state(self):
-        state = [False,False,False]
+        state = [2,0]
+        min_rng = self.vission_range
         for c in self.in_vission:
-            ang , on_left = self.get_location_angle_l(c.position)
-            if (ang < self.default_aim_angle ): state[0] = True
-            elif (ang < self.default_vission_angle): 
-                if on_left:
-                    state[1] = True
-                else :
-                    state[2] = True
-        return state 
+            rng = self.get_range(c.position)
+            if rng < min_rng :
+                to_c =  c.position -self.position
+                state = self.get_self_xyz(to_c.tolist())
+                state = Vector2(state)
+                state = state.prod(1/state.get_module()).get_list()  
+                min_rng = rng
+        return state
+
+
             
     def get_state_index(self,state):
+        
+        on_left = state [1]>=0
+        vec_state = Vector2(state).get_Vector3()
+        rng = vec_state.get_module()
+        ang = (vec_state).get_angle(Vector3([1,0,0]))
+
         state_index = 0
-        if state[0] : state_index = 1
-        elif state[1] : state_index = 2
-        elif state [2] : state_index = 3
+        if rng <=1.001 :
+            if (ang < self.default_aim_angle ): state_index = 1
+            elif (ang < self.default_vission_angle): 
+                if on_left:
+                    state_index = 2
+                else :
+                    state_index = 3
+            
+        
         return state_index
 
     def get_action_from_index(self,action_index:int):
@@ -122,7 +173,7 @@ class FlyingCreature:
         ##action = action*(1/np.linalg.norm(action))
         return ((action)* self.mobility).tolist()
 
-    def take_action(self,action,is_player = False):
+    def take_action(self,is_player = False):
         # action  = Vector3([action[0],action[1],0])
         # v = Vector2(self.velocity.tolist()).get_Vector3()
         # ang = v.get_angle(Vector3([1,0,0]))
@@ -132,6 +183,7 @@ class FlyingCreature:
         
         # v.add(action)         ############ problems
 
+        action = self.this_action
 
         v = Vector2(self.velocity.tolist()).get_Vector3()
         v.rotate_zyx_self(0,0,-action[1]*m.pi/10)
@@ -188,7 +240,6 @@ class FlyingCreature:
         self.size, 
         'agent':self.agent.get_dict()
         }
-        table = self.agent.q_table
 
         json_str = json.dumps(dic, indent=4)
 
@@ -197,8 +248,10 @@ class FlyingCreature:
             json_file.write(json_str)        
         self.agent.save_table(addr,self.id) 
 
-    def open_json(self,addr):
-
+    def open_json(self,addr,id = None):
+        id_bac = self.id
+        if id != None :              
+            self.id = id 
 
         # 将 JSON 字符串存储到文件中
         with open(addr+'/FlyingCreature-'+str(self.id)+'.json', "r") as json_file:
@@ -225,3 +278,5 @@ class FlyingCreature:
         
 
         self.agent.load_table(addr,self.id)
+
+        self.id  = id_bac
