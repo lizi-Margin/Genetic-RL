@@ -7,7 +7,7 @@ from train_buffer import ReplayBuffer
 
 class QTAgent:
     def __init__(self,state_num,action_num,lr = 0.05,futuer_para = 0.8,mr = 1e-5):
-        self.size = 1
+        self.size = 1        
 
         self.state_num = state_num
         self.action_num = action_num
@@ -132,12 +132,15 @@ class RandAgent:
     def save_table(self,addr,id):
         return
 
-class DQNAgent:
-    def __init__(self, state_dim, action_dim, lr=8e-4, gamma=0.95,mr = 0, train_buffer = None):
+class DQNAgent :
+    def __init__(self, state_dim, action_dim, lr=2e-4, gamma=0.95,mr = 0, train_buffer = None):
         self.size = 2
+        self.device = 'cuda'
+
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.q_network = net.QNetwork(state_dim, action_dim)
+        self.q_network.to(self.device)
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=lr)
         self.loss_fn = nn.MSELoss()
 
@@ -175,8 +178,11 @@ class DQNAgent:
         if np.random.uniform(0, 1) < self.epsilon:
             return np.random.choice(self.action_dim)
         else:
-            q_values = self.q_network.forward(torch.tensor(state, dtype=torch.float32))
-            self.last_q_table = q_values.detach().tolist()
+            state_tensor = torch.tensor(state, dtype=torch.float32).to(self.device)
+            q_values = self.q_network.forward(state_tensor).detach()
+            q_values.to('cpu')
+
+            self.last_q_table = q_values.tolist()
             return torch.argmax(q_values).item()
 
   
@@ -193,15 +199,18 @@ class DQNAgent:
  
     def UN(self, state, action, reward, next_state, done):
         # with gradient
-        q_values = self.q_network.forward(torch.tensor(state, dtype=torch.float32))        
-        action = torch.LongTensor(action).unsqueeze(dim=-1)
+        state = torch.tensor(state, dtype=torch.float32).to(self.device)
+        q_values = self.q_network.forward(state)        
+        action = torch.LongTensor(action).unsqueeze(dim=-1).to(self.device)
         q_value = q_values.gather(1,action).flatten()
 
         # target with no gradient
-        next_q_values = self.q_network.forward(torch.tensor(next_state, dtype=torch.float32)).detach()
-        reward = torch.FloatTensor(reward)
-        done = torch.IntTensor(done)
-        next_q_value = next_q_values.max(1)[0]        
+        next_state = torch.tensor(next_state, dtype=torch.float32).to(self.device)
+        next_q_values = self.q_network.forward(next_state).detach()
+        reward = torch.FloatTensor(reward).to(self.device)
+        done = torch.IntTensor(done).to(self.device)
+        next_q_value = next_q_values.max(1)[0] .to(self.device)
+
         target = reward + (1 - done) * self.gamma * next_q_value
 
         # optimize 

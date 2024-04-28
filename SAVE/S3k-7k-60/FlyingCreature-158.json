@@ -1,0 +1,12 @@
+{
+    "id": 158,
+    "default_idle_v": 1.5,
+    "default_thrust_v": 3.5,
+    "default_drag_v": 0.2,
+    "default_aim_angle": 0.2617993877991494,
+    "default_vission_angle": 0.7853981633974483,
+    "vission_range": 60,
+    "mobility": 0.6,
+    "size": 5,
+    "agent": {}
+}

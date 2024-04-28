@@ -109,14 +109,14 @@ class World:
                 print(self.step ,' -- ' , self.total_reward_list[self.step%self.total_reward_list_capacity])
                 print('   ',self.creatures[0].agent.last_q_table )
             if (self.step >0 and self.step % 1000 == 0):
-                self.save_all('./AUTOSAVE-GAME-MODE')
+                self.save_all('./SAVE/AUTOSAVE-GAME-MODE')
                 if plot:
                     plt.plot(x,self.total_reward_list) 
                     plt.show()
 
 
         pygame.quit()
-        self.save_all('./AUTOSAVE-GAME-MODE')
+        self.save_all('./SAVE/AUTOSAVE-GAME-MODE')
 
 
 
@@ -139,13 +139,13 @@ class World:
                 print('   ',self.creatures[0].agent.last_q_table )
             if (self.step >0 and self.step % 1000 == 0):
 
-                self.save_all('./AUTOSAVE')
+                self.save_all('./SAVE/AUTOSAVE')
                 plt.plot(x,self.total_reward_list) 
                 plt.show()
 
 
         pygame.quit()
-        self.save_all('./AUTOSAVE')
+        self.save_all('./SAVE/AUTOSAVE')
     
     def save_all(self,ad): 
         for creature in self.creatures:
